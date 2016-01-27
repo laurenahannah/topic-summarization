@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Created on Fri Oct  9 13:28:27 2015
+To do:
+    - for competitors (probability, pmi): how many times does it occur in corpus, how long the phrase is
 
 @author: lhannah
 """
@@ -56,12 +58,33 @@ def saveglobals(filename):
 #globals().update(load_dictionary(fpath)[0])
 #data = load_dictionary(fpath)
 #phrases = set()
-#for idx in xrange(2,(longest_phrase+1)):
-#   phrases.update(counts[idx]['ngram'])
+#for idx in xrange(1,(longest_phrase+1)):
+#    print(idx)
+#    phrases[idx] = counts[idx]['ngram']
 
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# From 
+
+def file_type(filename):
+    magic_dict = {
+    "\x1f\x8b\x08": "gz",
+    "\x42\x5a\x68": "bz2",
+    "\x50\x4b\x03\x04": "zip"
+    }
+
+    max_len = max(len(x) for x in magic_dict)
+    
+    with open(filename) as f:
+        file_start = f.read(max_len)
+    for magic, filetype in magic_dict.items():
+        if file_start.startswith(magic):
+            return filetype
+    return "txt"
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 def bfc(a, b, c, d, n, a_plus_b, a_plus_c, alpha, alpha_sum):
     """
+    Function for computing Bayes factors conditional on n
     """
 
     num = (gammaln(n + alpha_sum) +
@@ -81,6 +104,7 @@ def bfc(a, b, c, d, n, a_plus_b, a_plus_c, alpha, alpha_sum):
 
 def bfu(a, b, c, d, n, a_plus_b, a_plus_c, alpha, alpha_sum, beta):
     """
+    Function for computing Bayes factors unconditional on n
     """
 
     num = (log(1.0 + 1.0 / beta) +
@@ -101,6 +125,7 @@ def bfu(a, b, c, d, n, a_plus_b, a_plus_c, alpha, alpha_sum, beta):
 
 def csy(a, b, c, d, n, a_plus_b, a_plus_c):
     """
+    Function for computing chi-squared tests with a Yates correction
     """
 
     num = n * power(abs(a * d - b * c) - n / 2.0, 2)
@@ -113,12 +138,13 @@ def recursive_summary(l,state, phrases, test, selection, dist,
     """
     Pseudo code:
 	- inputs: state file, phrase list from lower levels
-	- outputs: phrase list for level (n) (phrases stored in dict of dicts)
+	- outputs: phrase list for level (l) (phrases stored in dict of dicts)
 	- structure:
 		~ make data frame of: n-gram, prefix, suffix, center, count (all)
-		~ iterrows over data frame: a = all, a+b = sum(suffix), a+c = sum(prefix), n = sum(center) 
+		~ iterrows over data frame: a = all, a+b = sum(suffix), a+c = sum(prefix), n = sum 
 		~ use testing algorithms as implemented
 		~ store accepted phrases in dict
+      - THIS IS A SUBROUTINE IN summarize_topics
     """
     topics = DataFrame()
     topics['prob'] = state.groupby('topic')['word'].count() / len(state)    
@@ -128,6 +154,8 @@ def recursive_summary(l,state, phrases, test, selection, dist,
     total_phrases = 0
     phrase_and_score = {}
     if l == 1:
+        # If unigrams, there is no previous inputs
+        # All unigrams are accepted by default        
         ngram = dict()
         for _, row in state.iterrows():
             if row['word'] in ngram.keys():
@@ -140,37 +168,38 @@ def recursive_summary(l,state, phrases, test, selection, dist,
         total_phrases = len(phrases[l])
         phrase_and_score = dict()
     else:
-        ngram = dict([(l,l * [''])])
-        doc = dict([(l,l * [-1])])
-        topic = dict([(l,l * [-1])])
-        num_topics = len(topics)
+        # If bigrams or longer, we need to use previous inputs
+        ngram = dict([(l,l * [''])]) # Store ngram entries
+        doc = dict([(l,l * [-1])]) # Store documents for each word
+        topic = dict([(l,l * [-1])]) # Store topics for each word
+        num_topics = len(topics) # Total number of topics
         # Do not need to store counts by topic, just 'all'
-        #counts = dict([(l, defaultdict(lambda: zeros(num_topics + 2, dtype=int)))])
+        
         for idx, row in state.iterrows():
-            if l == 1:
+            if l == 1: # We should not be in this situation
                 ngram[l] = [row['word']]
                 doc[l] = [row['doc']]
                 topic[l] = [row['topic']]
-            else: 
-                ngram[l] = ngram[l][1:] + [row['word']]
+            else: # Bigrams or longer
+                # Store ngrams, document numbers, and topic number in a list
+                ngram[l] = ngram[l][1:] + [row['word']] # Move one word forward
                 doc[l] = doc[l][1:] + [row['doc']]
                 topic[l] = topic[l][1:] + [row['topic']]
             
             # See if all in same document
             if len(set(doc[l])) == 1:
                 counts[l][tuple(ngram[l])][num_topics + 1] += 1
-                
+                # See if all in same topic
                 if len(set(topic[l])) == 1:
                     counts[l][tuple(ngram[l])][row['topic']] += 1
                     counts[l][tuple(ngram[l])][num_topics] += 1
                     
-                            
-            
-        # Need some refactoring here....
-    #    ngrams = DataFrame.from_records([[' '.join(x), ' '.join(x[:-1]),
-    #                                      ' '.join(x[1:]), ' '.join(x[1:-1])] + y.tolist()
-    #                                      for x, y in counts[l].items()], columns=(['ngram', 'prefix', 
-    #                                      'suffix', 'center'] + ['all']))
+        # Use tuple keys to make the data frame ngrams
+        # Store:
+        #   - ngram, its first n-1 words as 'prefix', last n-1 as 'suffix', first word, last, and center
+        #   - counts for each topic under topic numbers
+        #   - counts for the number of times in the same topic under 'same'
+        #   - topic ignorant counts under 'all'
         ngrams = DataFrame.from_records([[' '.join(x), ' '.join(x[:-1]),
                                               ' '.join(x[1:]), x[0],
                                               x[-1], ' '.join(x[1:-1])] + y.tolist()
@@ -182,47 +211,48 @@ def recursive_summary(l,state, phrases, test, selection, dist,
         n = ngrams['all'].sum()
         counts[l] = ngrams
         
-    
+        # Do significance testing
         if test == bfu or test == bfc:
+            # If using Bayes factors, set prior parameters
             alpha = 1.0
             alpha_sum = 4 * alpha
             beta = alpha_sum / n
-    
+        
+        # Precompute the total number of subphrase occurances
         prefix_cache = ngrams.groupby('prefix')['all'].sum()
         suffix_cache = ngrams.groupby('suffix')['all'].sum()
         center_cache = ngrams.groupby('center')['all'].sum()
         first_cache = ngrams.groupby('first')['all'].sum()
         last_cache = ngrams.groupby('last')['all'].sum()
+        # Store resulting scores in a list
         scores = len(ngrams) * [None]
         phrase_and_score = list()
-    
+        # See if both prefix and suffix are phrases
         for idx, row in ngrams[ngrams['prefix'].isin(phrases[l-1]) &
                                ngrams['suffix'].isin(phrases[l-1]) &
                                (ngrams['all'] >= min_phrase_count)].iterrows():
-    
+                                   
+            # Do testing for two contingency tables:
+            #   - 'first' and 'suffix'
+            #   - 'prefix' and 'last'
             a = row['all']
-    
- #         New values: bad for computations
- #         a_plus_b = suffix_cache[row['suffix']]
- #         a_plus_c = prefix_cache[row['prefix']]
- #         n_center = center_cache[row['center']]
-
+            # Compute values for 'first' vs 'suffix'
             a_plus_b = suffix_cache[row['suffix']]
             a_plus_c = first_cache[row['first']]
             b = a_plus_b - a
             c = a_plus_c - a
             d = n - a_plus_b - c
-    
+            # Update test arguments for first test
             args1 = [a, b, c, d, n, a_plus_b, a_plus_c]
-            
+            # Compute values for 'prefix' vs 'last'
             a_plus_b = last_cache[row['last']]
             a_plus_c = prefix_cache[row['prefix']]
             b = a_plus_b - a
             c = a_plus_c - a
             d = n - a_plus_b - c
-    
+            # Update test arguments for second test
             args2 = [a, b, c, d, n, a_plus_b, a_plus_c]
-    
+            # Update parameters to include prior values if Bayes factors
             if test == bfu:
                 args1 += [alpha, alpha_sum, beta]
                 args2 += [alpha, alpha_sum, beta]
@@ -230,7 +260,8 @@ def recursive_summary(l,state, phrases, test, selection, dist,
                 args1 += [alpha, alpha_sum]
                 args2 += [alpha, alpha_sum]
            
-    
+            # Send error if the wrong number of arguments, otherwise run tests
+            # For all tests, total score is the less significant value
             if test == bfu:
                 if min(len(args1),len(args2)) < 9:
                     print >> sys.stderr, args1
@@ -245,12 +276,12 @@ def recursive_summary(l,state, phrases, test, selection, dist,
                 scores[idx] = min(test(*args1), test(*args2))
     
         ngrams['score'] = scores
-    
+        # Make mask based on test thresholds
         if test == bfu or test == bfc:
             keep = ngrams['score'] <= (1.0 / 10)
         else:
             keep = ngrams['score'] > 10.83
-    
+        # Can include further selection requirements---default is 'none'
         if selection == 'none':
             phrases[l] = set(ngrams[keep]['ngram'])
         else:
@@ -283,20 +314,8 @@ def recursive_summary(l,state, phrases, test, selection, dist,
         phrase_and_score = zip(ngrams[keep]['ngram'], ngrams[keep]['score'])
         total_phrases = len(phrases[l])
         ngrams.drop(['prefix', 'suffix', 'center','score'], axis=1, inplace=True)
-        
-        
-        
-        
-        
-            
-#        if selection == 'bigram':
-#            phrases[2] = set(phrases[2].keys())
-#        elif selection == 'n-1-gram':
-#            for l in xrange(2, max_phrase_len + 1):
-#                phrases[l] = set(phrases[l].keys())
-#    
-#        scores = defaultdict(lambda: defaultdict(float))
     
+    # If new phrases were added, phrases_added is set to True
     phrases_added = False
     if total_phrases > 0:
         phrases_added = True
@@ -307,9 +326,9 @@ def recursive_summary(l,state, phrases, test, selection, dist,
     output_list.append(phrases) # First output is phrases
     output_list.append(scores)  # Second output is scores
     output_list.append(phrases_added)   # Is at least one new phrase added
-    output_list.append(phrases[l])
-    output_list.append(counts)
-    output_list.append(phrase_and_score)
+    output_list.append(phrases[l])  # Phrases
+    output_list.append(counts)  # Counts
+    output_list.append(phrase_and_score) # Phrase and score list for graphics/diagnostics
     return output_list
 
 
@@ -317,49 +336,45 @@ def recursive_summary(l,state, phrases, test, selection, dist,
 def summarize_topics(filenames, test, selection, dist, max_phrase_len,
                      min_phrase_count):
     """
+    Generate phrase list from topics
+    
+    Input: 
+        - filenames: either local .txt or .gz Mallet output
+        - test: bfc (Bayes factor conditional), bfu (BF unconditional), or csy (chi2 Yates)
+        - selection: choose 'none'
+        - dist: choose 'empirical'
+        - max_phrase_len: fail safe maximum phrase length, usually 50
+        - min_phrase_count: minimal phrase count for phrase selection, usually 5 or 10
     """
-
-    #state = read_csv(filenames, compression='gzip', skiprows=2,
-    #                 usecols=[0, 4, 5], header=0,
-    #                 names=['doc', 'word', 'topic'], sep=' ')
-    # This is for my folder
-    state = read_csv(filenames,skiprows = 2, usecols = [0,4,5], header = 0, 
-                     names = ['doc','word','topic'], sep = ' ')
+    # Check input file type for gz vs txt:
+    if file_type(filenames) == 'gz':
+        state = read_csv(filenames, compression='gzip', skiprows=2,
+                         usecols=[0, 4, 5], header=0,
+                         names=['doc', 'word', 'topic'], sep=' ')
+    else:
+        # This is for a txt file in a local folder
+        state = read_csv(filenames,skiprows = 2, usecols = [0,4,5], header = 0, 
+                         names = ['doc','word','topic'], sep = ' ')
+    
     state['word'] = state['word'].astype(str)
-#    topics = read_csv(filenames, index_col = 0, header = None, sep = '(?: |\t)',
-#                      engine = 'python', names = (['alpha'] + [x for x in xrange(1, 51)]))
+    
     topics = DataFrame()
     topics['prob'] = state.groupby('topic')['word'].count() / len(state)
-#    topics = read_csv(filenames[1], sep='(?: |\t)', engine='python',
-#                      index_col=0, header=None,
-#                      names=(['alpha'] + [x for x in xrange(1, 20)]))
-#    if dist == 'average-posterior':
-#        topics['prob'] = zeros(len(topics))
-#        for _, df in state.groupby('doc'):
-#            topics['prob'] += (topics['alpha'].add(df.groupby('topic').size(),
-#                                                   fill_value=0) /
-#                               (topics['alpha'].sum() + len(df)))
-#        topics['prob'] /= state['doc'].nunique()
-#    elif dist == 'empirical':
-#        topics['prob'] = state.groupby('topic')['word'].count() / len(state)
-#    else:
-#        topics['prob'] = topics['alpha'] / topics['alpha'].sum()
-
-#    assert topics['prob'].sum() >= 1-1e-15
-#    assert topics['prob'].sum() <= 1+1e-15
 
     num_topics = len(topics)
-
+    # Store phrases in a dictionary where length of ngram is the key, value is set of ngrams
     phrases = dict()
 
     print >> sys.stderr, 'Creating candidate n-grams...'
     # Call recursive_summary(l,state, phrases, test, selection, dist, max_phrase_len, min_phrase_count)
     # Also need to check if there are still feasible phrases
     keep_going = True
-    l = 1
+    l = 1 # phrase length
     longest_phrase = 1
-    counts = dict([(ell, defaultdict(lambda: zeros(num_topics + 2, dtype=int)))
-                   for ell in xrange(1, max_phrase_len + 1)])
+    # Store counts in a dictionary where phrase length is key, value is dict
+    # that stores counts for phrases in each specific topic, overall in same 
+    # topic, and overall without topic info
+    counts = dict([(ell, defaultdict(lambda: zeros(num_topics + 2, dtype=int))) for ell in xrange(1, max_phrase_len + 1)])
     bf_score_dict = dict()
     
     while keep_going:
@@ -379,12 +394,14 @@ def summarize_topics(filenames, test, selection, dist, max_phrase_len,
             elif (l > max_phrase_len):
                 keep_going = False
                 break
+        # Call recursive_summary using previous inputs
         recursive_output = recursive_summary(l,state, phrases, test, selection, dist, 
                                          max_phrase_len, min_phrase_count,counts)
         phrases = recursive_output[0]
         scores = recursive_output[1]
         new_phrases = recursive_output[3]
         counts = recursive_output[4]
+        # Store BF scores according to phrase for plotting/debugging
         phrase_and_score = recursive_output[5]
         for idx in xrange(len(phrase_and_score)):
             phrase_value = phrase_and_score[idx][0]
@@ -402,11 +419,6 @@ def summarize_topics(filenames, test, selection, dist, max_phrase_len,
     
     return output_list
     
-#    if selection == 'bigram':
-#        phrases[2] = set(phrases[2].keys())
-#    elif selection == 'n-1-gram':
-#        for l in xrange(2, max_phrase_len + 1):
-#            phrases[l] = set(phrases[l].keys())
 
 
 def segment_state(state,phrases,longest_phrase):
@@ -527,6 +539,9 @@ def segment_state(state,phrases,longest_phrase):
             
 def get_scores(counts,longest_phrase,state,phrases,topic_filename,mu='N',MI='N'):
     # mu is Laplace smoother; other value is 1/T
+    # MI: option to use code to select unigram phrases according to mutual information
+    #   - 'Y':   use MI unigram selection
+    #   - 'N':   use KALE selection for n-gram phrases
     topics = read_csv(topic_filename, index_col = 0, header = None, sep = '(?: |\t)',
                       engine = 'python', names = (['alpha'] + [x for x in xrange(1, 21)]))
     scores = defaultdict(lambda: defaultdict(float))
@@ -535,11 +550,15 @@ def get_scores(counts,longest_phrase,state,phrases,topic_filename,mu='N',MI='N')
     if (mu == 'N'):
         mu_val = 0
     topic_prob_vec = list(topics['prob'])
-    if (mu == 'Y'):
-        mu_val = 10000 # Add mu_val observations to fake phrase
+    if (mu != 'N'):
+        if mu == 'Y':
+            mu_val = 10000 # Add mu_val observations to fake phrase
+        else:
+            mu_val = mu
         mu_vec = [x*mu_val for x in topic_prob_vec]
+        mu = 'Y'
         print(sum(mu_vec))
-        
+    print(mu_val)
     range_val = 2
     if MI == 'N':
         range_val = longest_phrase + 1
@@ -578,7 +597,7 @@ def get_scores(counts,longest_phrase,state,phrases,topic_filename,mu='N',MI='N')
                 p_topic = topics['prob'][topic]
                 p_not_topic = 1.0 - p_topic
                 
-    
+                # Compute KALE values
                 for _, row in ngrams[(ngrams['ngram'].isin(phrases[l])) &
                                        (ngrams[topic] > 0)].iterrows():
     
@@ -775,11 +794,21 @@ def make_plot(phrases,bf_score_dict,output_df,state,counts,filename):
     
 def make_number_plot(phrases,bf_score_dict,state,counts,longest_phrase,topic_filename):
     # Loop over smoothing values and plot results
-    n_total = len(state)
+    n = len(state)
     mu_vec = [0,n/100,n/10,n]
-    f, axarr = plt.subplots(2)
+    #f, axarr = plt.subplots(len(mu_vec))
+    #g, axarr_2 = plt.subplots(len(mu_vec))
+    
+    f, axarr = plt.subplots(3)    
+    
     axarr_counter = 0
+    
+    phrase_lengths_array = [0]*len(mu_vec)
+    truncated_phrase_lengths_array = [0]*len(mu_vec)    
+    short_phrase_lengths_array = [0]*len(mu_vec)    
+    
     for mu_val in mu_vec:
+        print(mu_val)
         output_df_temp = get_scores(counts,longest_phrase,state,phrases,topic_filename,mu_val,'N')
         # Get counts for output_df_temp
         phrase_lengths = list()
@@ -787,11 +816,29 @@ def make_number_plot(phrases,bf_score_dict,state,counts,longest_phrase,topic_fil
             phrase_list_temp = output_df_temp['phrase'][topic_number]
             for phrase_temp in phrase_list_temp:
                 phrase_lengths.append(len(phrase_temp.split()))
-        axarr[axarr_counter].hist(phrase_lengths, bins = 10, histtype='stepfilled', label = 'mu = ' + mu_val)
-        
+        longer_phrases = [x for x in phrase_lengths if x > 4]
+        shorter_phrases = [x for x in phrase_lengths if x <= 10]
+        #axarr[axarr_counter].hist(phrase_lengths, bins = 30, histtype='stepfilled', label = 'mu = ' + str(mu_val))
+        #axarr_2[axarr_counter].hist(longer_phrases, bins = 30, histtype='stepfilled', label = 'mu = ' + str(mu_val))
+        phrase_lengths_array[axarr_counter] = phrase_lengths
+        truncated_phrase_lengths_array[axarr_counter] = longer_phrases
+        short_phrase_lengths_array[axarr_counter] = shorter_phrases        
+        axarr_counter += 1
+    
+    axarr[0].hist(phrase_lengths_array, 30, normed=0, histtype='step', fc = 'none',
+                            color=['b', 'c', 'r', 'y'],
+                            label=['mu = 0', 'mu = n/100', 'mu = n/10', 'mu = n'])  
+    axarr[1].hist(truncated_phrase_lengths_array, 25, normed=0, histtype='step', fc = 'none',
+                            color=['b', 'c', 'r', 'y'],
+                            label=['Crimson', 'Burlywood', 'Chartreuse', 'Red'])
+    axarr[2].hist(short_phrase_lengths_array, 8, normed=0, histtype='step', fc = 'none',
+                            color=['b', 'c', 'r', 'y'],
+                            label=['mu = 0', 'mu = n/100', 'mu = n/10', 'mu = n'])
     f.tight_layout()
     plt.savefig(topic_filename + "_Lengths_Histogram.pdf", format = 'pdf')
-        
+    
+    #g.tight_layout()
+    #plt.savefig(topic_filename + "_Lengths_Histogram_truncated.pdf", format = 'pdf')    
             
 
 def summarize_topics_wrapper(file_names,test,selection,dist,max_phrase_len,min_phrase_count):
