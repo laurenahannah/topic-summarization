@@ -416,6 +416,7 @@ def summarize_topics(filenames, test, selection, dist, max_phrase_len,
     output_list.append(state)
     output_list.append(longest_phrase)
     output_list.append(bf_score_dict)
+    output_list.append(counts)
     
     return output_list
     

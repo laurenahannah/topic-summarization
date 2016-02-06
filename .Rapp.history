@@ -1,0 +1,62 @@
+? rbin
+qqq = rbinom(31,1000,.2)
+hist(qqq)
+qqq = rbinom(1000,31,.2)
+hist(qqq)
+aaa = which(qqq==1)
+aaa
+5/1000
+5/1000*100
+qqq = rbinom(100000,31,.2)
+hist(qqq)
+aaa = which(qqq<=1)
+length(aaa)
+length(aaa)/100000*100
+www = 48613-20174
+xxx = 11524 - 3408
+xxx/www*100
+qqq = rbinom(100000,95,.2)
+aaa = which(qqq<=8)
+length(aaa)
+length(aaa)/100000*100
+300000000/10000
+300000000/50000
+300000000/500000
+300000000/5000000
+exp(70)
+source("/Users/lhannah/PythonProjects/TopicNames/src/make_plot_R.R")
+ls()
+counts_cdf
+ls
+ls()
+dim(df_counts)
+names(df_counts)
+attach(df_counts)
+df_counts[count_value==1]
+df_counts[count_value==1,]
+df_counts[count_value==1,]
+detach(df_counts)
+attach(df_length)
+names(df_length)
+df_length[length_value==1,]
+5 %% 3
+ls
+ls()
+aa = matrix(1:4,2,2)
+aa
+bb = matrix(5:8,2,2)
+bb
+cc = cbind(aa,bb)
+cc
+dd = cbind(bb,aa)
+dd
+rbind(cc,dd)
+aa = matrix(1:4,2,2)
+aa
+bb = matrix(5:8,2,2)
+bb
+cc = cbind(aa,bb)
+cc
+dd = cbind(bb,aa)
+dd
+rbind(cc,dd)
